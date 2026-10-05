@@ -177,51 +177,160 @@ export function buildRig(
 		}
 	}
 
-	// Loose attachment: a stroke that touches nothing — an eye or mouth sitting
-	// inside the head — still has to ride the part it is drawn on. Attach it to
-	// the nearest stroke instead of leaving it stranded in place.
+	// A stroke with no joint of its own still has to ride the part it was drawn
+	// on. Two rules, in order:
+	//
+	// 1. Containment. An eye or mouth is drawn *inside* the head, and distance
+	//    alone picks the wrong target there: the nearest stroke to an eye is the
+	//    other eye, so the pair becomes an island that never reaches the head.
+	//    Attach it to the tightest stroke whose bounding box encloses it instead.
+	// 2. Nearest anchor. Anything not enclosed attaches to the nearest stroke
+	//    that already reaches the structure — never to another orphan.
+	//
+	// Both were measured on a real drawing: with rule 2 alone, both eyes still
+	// reported parent=null and sat still while the head swung.
+	const CONTAIN_PAD_PX = 12;
 	const LOOSE_EPS_PX = 90;
+	const boxArea = (b: {
+		minX: number;
+		minY: number;
+		maxX: number;
+		maxY: number;
+	}) => Math.max(0, b.maxX - b.minX) * Math.max(0, b.maxY - b.minY);
+	const nearestPair = (i: number, j: number): [Point, Point] => {
+		let best = Number.POSITIVE_INFINITY;
+		let a: Point = strokes[i].points[0];
+		let b: Point = strokes[j].points[0];
+		for (const p of strokes[i].points) {
+			for (const q of strokes[j].points) {
+				const d = dx2(p, q);
+				if (d < best) {
+					best = d;
+					a = p;
+					b = q;
+				}
+			}
+		}
+		return [a, b];
+	};
+	const attachLoose = (i: number, j: number, a: Point, b: Point) => {
+		adjacency[i].push({ to: j, pivot: a, loose: true });
+		adjacency[j].push({ to: i, pivot: b, loose: true });
+	};
+
 	for (let i = 0; i < n; i++) {
 		if (adjacency[i].length > 0) continue;
-		let best = Number.POSITIVE_INFINITY;
+		const inner = boxes[i];
+		let bestArea = Number.POSITIVE_INFINITY;
 		let target = -1;
-		let attachSelf: Point | null = null;
-		let attachOther: Point | null = null;
 		for (let j = 0; j < n; j++) {
 			if (j === i) continue;
-			const a = boxes[i];
-			const b = boxes[j];
+			const outer = boxes[j];
 			if (
-				a.maxX + LOOSE_EPS_PX < b.minX ||
-				b.maxX + LOOSE_EPS_PX < a.minX
+				outer.minX - CONTAIN_PAD_PX > inner.minX ||
+				outer.maxX + CONTAIN_PAD_PX < inner.maxX ||
+				outer.minY - CONTAIN_PAD_PX > inner.minY ||
+				outer.maxY + CONTAIN_PAD_PX < inner.maxY
 			)
 				continue;
-			if (
-				a.maxY + LOOSE_EPS_PX < b.minY ||
-				b.maxY + LOOSE_EPS_PX < a.minY
-			)
-				continue;
-			for (const p of strokes[i].points) {
-				for (const q of strokes[j].points) {
-					const d = dx2(p, q);
-					if (d < best) {
-						best = d;
-						attachSelf = p;
-						attachOther = q;
-						target = j;
+			const size = boxArea(outer);
+			if (size <= boxArea(inner) || size >= bestArea) continue;
+			bestArea = size;
+			target = j;
+		}
+		if (target >= 0) {
+			const [a, b] = nearestPair(i, target);
+			attachLoose(i, target, a, b);
+		}
+	}
+
+	// "Anchored" means *reaches a real joint* — grow that through every edge, so
+	// a head is not treated as attached merely because the eyes were drawn on it
+	// (attaching the eyes gave the head an edge, which hid it from the bridge
+	// below and left the head floating while the body moved).
+	const anchored = new Array(n).fill(false);
+	const grow: number[] = [];
+	for (let i = 0; i < n; i++) {
+		if (adjacency[i].some((edge) => !edge.loose)) {
+			anchored[i] = true;
+			grow.push(i);
+		}
+	}
+	while (grow.length > 0) {
+		const i = grow.pop() as number;
+		for (const edge of adjacency[i]) {
+			if (!anchored[edge.to]) {
+				anchored[edge.to] = true;
+				grow.push(edge.to);
+			}
+		}
+	}
+
+	// Bridge every island that still reaches no joint to its nearest anchored
+	// neighbour, one bridge per island, nearest first.
+	const comp = new Array(n).fill(-1);
+	const comps: number[][] = [];
+	for (let s = 0; s < n; s++) {
+		if (comp[s] >= 0) continue;
+		const id = comps.length;
+		const members: number[] = [];
+		comp[s] = id;
+		members.push(s);
+		for (let q = 0; q < members.length; q++) {
+			for (const edge of adjacency[members[q]]) {
+				if (comp[edge.to] < 0) {
+					comp[edge.to] = id;
+					members.push(edge.to);
+				}
+			}
+		}
+		comps.push(members);
+	}
+	const compAnchored = comps.map((members) =>
+		members.some((i) => anchored[i]),
+	);
+
+	for (let guard = 0; guard < comps.length; guard++) {
+		let best = LOOSE_EPS_PX * LOOSE_EPS_PX;
+		let from = -1;
+		let to = -1;
+		let fromPoint: Point | null = null;
+		let toPoint: Point | null = null;
+		for (let c = 0; c < comps.length; c++) {
+			if (compAnchored[c]) continue;
+			for (const i of comps[c]) {
+				for (let j = 0; j < n; j++) {
+					if (comp[j] === c || !compAnchored[comp[j]]) continue;
+					const a = boxes[i];
+					const b = boxes[j];
+					if (
+						a.maxX + LOOSE_EPS_PX < b.minX ||
+						b.maxX + LOOSE_EPS_PX < a.minX
+					)
+						continue;
+					if (
+						a.maxY + LOOSE_EPS_PX < b.minY ||
+						b.maxY + LOOSE_EPS_PX < a.minY
+					)
+						continue;
+					for (const p of strokes[i].points) {
+						for (const q of strokes[j].points) {
+							const d = dx2(p, q);
+							if (d < best) {
+								best = d;
+								from = i;
+								to = j;
+								fromPoint = p;
+								toPoint = q;
+							}
+						}
 					}
 				}
 			}
 		}
-		if (
-			target >= 0 &&
-			attachSelf &&
-			attachOther &&
-			best <= LOOSE_EPS_PX * LOOSE_EPS_PX
-		) {
-			adjacency[i].push({ to: target, pivot: attachSelf, loose: true });
-			adjacency[target].push({ to: i, pivot: attachOther, loose: true });
-		}
+		if (from < 0 || to < 0 || !fromPoint || !toPoint) break;
+		attachLoose(from, to, fromPoint, toPoint);
+		compAnchored[comp[from]] = true;
 	}
 
 	// A pair touching at two or more places is rigid together.
