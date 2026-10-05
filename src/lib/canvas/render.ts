@@ -53,7 +53,13 @@ export function renderScene(
 		ctx.save();
 		if (matrices) ctx.transform(...matrices[index]);
 		ctx.strokeStyle = stroke.color;
-		strokeGeometry(ctx, stroke, width, height);
+		strokeGeometry(
+			ctx,
+			stroke,
+			width,
+			height,
+			matrices ? { time, intensity } : null,
+		);
 		ctx.restore();
 	});
 
@@ -65,7 +71,7 @@ export function renderScene(
 		if (stroke.kind !== "erase") return;
 		ctx.save();
 		if (matrices) ctx.transform(...matrices[index]);
-		strokeGeometry(ctx, stroke, width, height);
+		strokeGeometry(ctx, stroke, width, height, null);
 		ctx.restore();
 	});
 	ctx.restore();
@@ -76,6 +82,7 @@ function strokeGeometry(
 	stroke: Stroke,
 	width: number,
 	height: number,
+	wiggle: { time: number; intensity: number } | null,
 ) {
 	const lineWidth = stroke.width * Math.min(width, height);
 	ctx.lineWidth = lineWidth;
@@ -84,7 +91,49 @@ function strokeGeometry(
 		drawDot(ctx, stroke.points[0], lineWidth, width, height);
 		return;
 	}
-	ctx.stroke(getCachedPath(stroke, width, height));
+	ctx.stroke(
+		wiggle && stroke.points.length > 2
+			? buildWiggledPath(
+					stroke,
+					width,
+					height,
+					wiggle.time,
+					wiggle.intensity,
+				)
+			: getCachedPath(stroke, width, height),
+	);
+}
+
+/**
+ * A tiny, slowly-boiling offset so a line reads as hand-drawn instead of
+ * rigid. Tapered to zero at both ends, so a stroke's endpoints never move and
+ * the joints stay welded. Amplitude is well under a pixel-and-a-half.
+ */
+function buildWiggledPath(
+	stroke: Stroke,
+	width: number,
+	height: number,
+	time: number,
+	intensity: number,
+): Path2D {
+	const points = stroke.points;
+	const n = points.length;
+	const seed = (points[0].x * 7.31 + points[0].y * 5.17) * Math.PI * 2;
+	const amplitude = 0.0022 * (0.35 + 0.65 * intensity);
+	const path = new Path2D();
+	for (let i = 0; i < n; i++) {
+		const t = i / (n - 1);
+		const wobble = amplitude * Math.sin(Math.PI * t);
+		const x =
+			(points[i].x + wobble * Math.sin(time * 2.3 + t * 8 + seed)) *
+			width;
+		const y =
+			(points[i].y + wobble * Math.cos(time * 1.9 + t * 7 + seed * 1.3)) *
+			height;
+		if (i === 0) path.moveTo(x, y);
+		else path.lineTo(x, y);
+	}
+	return path;
 }
 
 function getCachedPath(stroke: Stroke, width: number, height: number): Path2D {
