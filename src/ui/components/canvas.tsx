@@ -130,8 +130,11 @@ export function Canvas({ className = "" }: { className?: string }) {
 			return;
 		}
 		let raf = 0;
+		// `time` is seconds since playback began, so the rig can ease in from
+		// the rest pose instead of snapping to an arbitrary phase.
+		const startedAt = performance.now();
 		const loop = (time: number) => {
-			render(sampleRef.current(), time / 1000);
+			render(sampleRef.current(), (time - startedAt) / 1000);
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);

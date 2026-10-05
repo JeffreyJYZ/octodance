@@ -1,5 +1,5 @@
 import { type AudioFeatures, isStill } from "./audio";
-import { buildRig, type Rig, rigMatrices } from "./rig";
+import { buildRig, type Mat, type Rig, rigMatrices } from "./rig";
 import type { Point, Stroke } from "./strokes";
 
 // Path2D cache: strokes are static geometry, so a stroke's path is built once
@@ -26,21 +26,25 @@ export function renderScene(
 
 	// Still = editing (or intensity 0): identity transforms, plain cached paths.
 	const still = isStill(features) || intensity === 0;
-	let matrices: ReturnType<typeof rigMatrices> | null = null;
+	let matrices: Mat[] | null = null;
 	if (!still && strokes.length > 0) {
 		const key = `${Math.round(width)}x${Math.round(height)}:${strokes.length}`;
-		let entry = rigCache.get(strokes);
-		if (!entry || entry.key !== key) {
-			entry = { key, rig: buildRig(strokes, width, height) };
-			rigCache.set(strokes, entry);
-		}
-		matrices = rigMatrices(
+		const cached = rigCache.get(strokes);
+		const entry =
+			cached && cached.key === key
+				? cached
+				: { key, rig: buildRig(strokes, width, height) };
+		if (entry !== cached) rigCache.set(strokes, entry);
+		const groupMats = rigMatrices(
 			entry.rig,
 			features,
 			time,
 			intensity,
 			width,
 			height,
+		);
+		matrices = strokes.map(
+			(_, index) => groupMats[entry.rig.groupOf[index]],
 		);
 	}
 

@@ -29,7 +29,12 @@ export function isStill(features: AudioFeatures): boolean {
 	);
 }
 
-type BeatState = { average: number; last: number; value: number };
+type BeatState = {
+	average: number;
+	last: number;
+	value: number;
+	frames: number;
+};
 
 /**
  * Loads an audio file and exposes per-frame spectrum features for the render
@@ -41,7 +46,12 @@ export function useAudio() {
 	const bufferRef = useRef<AudioBuffer | null>(null);
 	const sourceRef = useRef<AudioBufferSourceNode | null>(null);
 	const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
-	const beatRef = useRef<BeatState>({ average: 0, last: 0, value: 0 });
+	const beatRef = useRef<BeatState>({
+		average: 0,
+		last: 0,
+		value: 0,
+		frames: 0,
+	});
 
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [trackName, setTrackName] = useState<string | null>(null);
@@ -129,7 +139,12 @@ export function useAudio() {
 		};
 		source.start();
 		sourceRef.current = source;
-		beatRef.current = { average: 0, last: 0, value: 0 };
+		beatRef.current = {
+			average: 0,
+			last: performance.now(),
+			value: 0,
+			frames: 0,
+		};
 		setIsPlaying(true);
 	}, [ensureContext, stopSource]);
 
@@ -182,10 +197,17 @@ export function useAudio() {
 		};
 
 		const beat = beatRef.current;
+		beat.frames += 1;
+		// Seed the baseline from the first frame, then require a warm-up: with
+		// `average` still near zero every frame would otherwise register as a
+		// beat, slamming every limb at playback start.
+		if (beat.frames === 1) beat.average = features.bass;
 		beat.average = beat.average * 0.94 + features.bass * 0.06;
 		beat.value *= 0.88;
 		const now = performance.now();
 		if (
+			beat.frames > 40 &&
+			beat.average > 0.03 &&
 			features.bass > beat.average * 1.25 &&
 			features.bass > 0.06 &&
 			now - beat.last > 140
