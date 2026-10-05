@@ -122,10 +122,8 @@ export function buildRig(
 	// Find contacts, and how many there are per pair. For each contact we keep
 	// the closest point **on each stroke**: a child pivots about its own point,
 	// so that point never moves and the joint cannot open or protrude.
-	const adjacency: { to: number; pivot: Point }[][] = Array.from(
-		{ length: n },
-		() => [],
-	);
+	const adjacency: { to: number; pivot: Point; loose: boolean }[][] =
+		Array.from({ length: n }, () => []);
 	const edgeList: {
 		a: number;
 		b: number;
@@ -173,9 +171,56 @@ export function buildRig(
 			if (attachA && attachB && best <= eps2) {
 				edgeList.push({ a: i, b: j, attachA, attachB, contacts });
 				// The pivot recorded for each side is that side's own point.
-				adjacency[i].push({ to: j, pivot: attachA });
-				adjacency[j].push({ to: i, pivot: attachB });
+				adjacency[i].push({ to: j, pivot: attachA, loose: false });
+				adjacency[j].push({ to: i, pivot: attachB, loose: false });
 			}
+		}
+	}
+
+	// Loose attachment: a stroke that touches nothing — an eye or mouth sitting
+	// inside the head — still has to ride the part it is drawn on. Attach it to
+	// the nearest stroke instead of leaving it stranded in place.
+	const LOOSE_EPS_PX = 90;
+	for (let i = 0; i < n; i++) {
+		if (adjacency[i].length > 0) continue;
+		let best = Number.POSITIVE_INFINITY;
+		let target = -1;
+		let attachSelf: Point | null = null;
+		let attachOther: Point | null = null;
+		for (let j = 0; j < n; j++) {
+			if (j === i) continue;
+			const a = boxes[i];
+			const b = boxes[j];
+			if (
+				a.maxX + LOOSE_EPS_PX < b.minX ||
+				b.maxX + LOOSE_EPS_PX < a.minX
+			)
+				continue;
+			if (
+				a.maxY + LOOSE_EPS_PX < b.minY ||
+				b.maxY + LOOSE_EPS_PX < a.minY
+			)
+				continue;
+			for (const p of strokes[i].points) {
+				for (const q of strokes[j].points) {
+					const d = dx2(p, q);
+					if (d < best) {
+						best = d;
+						attachSelf = p;
+						attachOther = q;
+						target = j;
+					}
+				}
+			}
+		}
+		if (
+			target >= 0 &&
+			attachSelf &&
+			attachOther &&
+			best <= LOOSE_EPS_PX * LOOSE_EPS_PX
+		) {
+			adjacency[i].push({ to: target, pivot: attachSelf, loose: true });
+			adjacency[target].push({ to: i, pivot: attachOther, loose: true });
 		}
 	}
 
@@ -193,6 +238,7 @@ export function buildRig(
 		b: number;
 		attachFrom: Point;
 		attachTo: Point;
+		loose: boolean;
 	}[] = [];
 	for (let s = 0; s < n; s++) {
 		if (visited[s]) continue;
@@ -212,6 +258,7 @@ export function buildRig(
 						b: link.to,
 						attachFrom: back ? back.pivot : link.pivot,
 						attachTo: link.pivot,
+						loose: link.loose,
 					});
 					stack.push(link.to);
 				} else if (link.to !== parentNode[current]) {
@@ -258,18 +305,20 @@ export function buildRig(
 			: { x: 0.5, y: 0.5 };
 
 	// Group-level tree (tree edges whose endpoints ended up in different groups).
-	const groupAdj: { to: number; pivot: Point }[][] = Array.from(
-		{ length: groupCount },
-		() => [],
-	);
+	const groupAdj: { to: number; pivot: Point; loose: boolean }[][] =
+		Array.from({ length: groupCount }, () => []);
 	for (const edge of treeEdges) {
 		const ga = groupOf[edge.a];
 		const gb = groupOf[edge.b];
 		if (ga === gb) continue;
 		// Each entry's pivot is a point on the destination group, so whichever
 		// side ends up as the child rotates about its own point.
-		groupAdj[ga].push({ to: gb, pivot: edge.attachTo });
-		groupAdj[gb].push({ to: ga, pivot: edge.attachFrom });
+		groupAdj[ga].push({ to: gb, pivot: edge.attachTo, loose: edge.loose });
+		groupAdj[gb].push({
+			to: ga,
+			pivot: edge.attachFrom,
+			loose: edge.loose,
+		});
 	}
 
 	const groups: RigGroup[] = new Array(groupCount);
@@ -281,6 +330,7 @@ export function buildRig(
 		parentGroup: number | null,
 		pivot: Point,
 		linked: boolean,
+		loose: boolean,
 	): RigGroup => {
 		const members = memberLists[index];
 		const allErase = members.every((m) => strokes[m].kind === "erase");
@@ -315,7 +365,9 @@ export function buildRig(
 		return {
 			parent: parentGroup,
 			pivot,
-			swing: !linked ? (allErase ? 0 : 0.12) : 0.3,
+			// A loosely attached part swings 0: it rides its parent rigidly, so an
+			// eye drawn inside the head moves exactly with the head.
+			swing: loose ? 0 : linked ? (allErase ? 0 : 0.3) : 0.12,
 			freq: 2.4,
 			phase: seed * Math.PI,
 			dir,
@@ -351,6 +403,7 @@ export function buildRig(
 			null,
 			linked ? center : centroid(strokes[rootMembers[0]].points),
 			linked,
+			false,
 		);
 		order.push(root);
 
@@ -361,7 +414,13 @@ export function buildRig(
 			for (const link of groupAdj[current]) {
 				if (placed.has(link.to)) continue;
 				placed.add(link.to);
-				groups[link.to] = makeGroup(link.to, current, link.pivot, true);
+				groups[link.to] = makeGroup(
+					link.to,
+					current,
+					link.pivot,
+					true,
+					link.loose,
+				);
 				order.push(link.to);
 				walk.push(link.to);
 			}
