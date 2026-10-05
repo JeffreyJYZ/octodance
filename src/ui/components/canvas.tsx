@@ -144,9 +144,13 @@ export function Canvas({ className = "" }: { className?: string }) {
 		if (storedPalette) setPalette(storedPalette);
 	}, [render, bump]);
 
-	// Flush on the way out so a reload never drops the drawing.
+	// Flush on the way out so a reload never drops the drawing. Never write an
+	// empty drawing here: if the restore ever came back empty, flushing would
+	// wipe the user's saved work. Clear already removes the key explicitly.
 	useEffect(() => {
-		const flush = () => saveDrawing(strokesRef.current);
+		const flush = () => {
+			if (strokesRef.current.length > 0) saveDrawing(strokesRef.current);
+		};
 		window.addEventListener("beforeunload", flush);
 		window.addEventListener("pagehide", flush);
 		return () => {
