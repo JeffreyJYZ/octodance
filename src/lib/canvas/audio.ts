@@ -30,7 +30,8 @@ export function isStill(features: AudioFeatures): boolean {
 }
 
 type BeatState = {
-	average: number;
+	prevEnergy: number;
+	riseAvg: number;
 	last: number;
 	value: number;
 	frames: number;
@@ -46,8 +47,10 @@ export function useAudio() {
 	const bufferRef = useRef<AudioBuffer | null>(null);
 	const sourceRef = useRef<AudioBufferSourceNode | null>(null);
 	const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+	const timeDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 	const beatRef = useRef<BeatState>({
-		average: 0,
+		prevEnergy: 0,
+		riseAvg: 0,
 		last: 0,
 		value: 0,
 		frames: 0,
@@ -67,6 +70,9 @@ export function useAudio() {
 			contextRef.current = context;
 			analyserRef.current = analyser;
 			dataRef.current = new Uint8Array(analyser.frequencyBinCount);
+			// Time-domain buffer for onset detection: unlike the frequency data
+			// it is not affected by `smoothingTimeConstant`.
+			timeDataRef.current = new Uint8Array(analyser.fftSize);
 		}
 		return contextRef.current;
 	}, []);
@@ -140,7 +146,8 @@ export function useAudio() {
 		source.start();
 		sourceRef.current = source;
 		beatRef.current = {
-			average: 0,
+			prevEnergy: 0,
+			riseAvg: 0,
 			last: performance.now(),
 			value: 0,
 			frames: 0,
@@ -196,21 +203,33 @@ export function useAudio() {
 			beat: 0,
 		};
 
+		// Onset detection from the raw waveform. The frequency data is smoothed,
+		// and on a loud sustained track `bass` sits within a hair of its own
+		// average, so a level-ratio test can never fire (measured: zero beats in
+		// three seconds). A rise in short-term energy can still fire.
+		const timeData = timeDataRef.current;
+		let energy = 0;
+		if (timeData) {
+			analyser.getByteTimeDomainData(timeData);
+			let sum = 0;
+			for (let i = 0; i < timeData.length; i++) {
+				const v = (timeData[i] - 128) / 128;
+				sum += v * v;
+			}
+			energy = Math.sqrt(sum / timeData.length);
+		}
+
 		const beat = beatRef.current;
 		beat.frames += 1;
-		// Seed the baseline from the first frame, then require a warm-up: with
-		// `average` still near zero every frame would otherwise register as a
-		// beat, slamming every limb at playback start.
-		if (beat.frames === 1) beat.average = features.bass;
-		beat.average = beat.average * 0.94 + features.bass * 0.06;
-		beat.value *= 0.88;
+		const rise = Math.max(0, energy - beat.prevEnergy);
+		beat.prevEnergy = energy;
+		beat.riseAvg = beat.riseAvg * 0.92 + rise * 0.08;
+		beat.value *= 0.8;
 		const now = performance.now();
 		if (
 			beat.frames > 40 &&
-			beat.average > 0.03 &&
-			features.bass > beat.average * 1.25 &&
-			features.bass > 0.06 &&
-			now - beat.last > 140
+			rise > Math.max(0.02, beat.riseAvg * 2.2) &&
+			now - beat.last > 180
 		) {
 			beat.value = 1;
 			beat.last = now;
