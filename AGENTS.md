@@ -29,6 +29,8 @@ Published: <https://github.com/JeffreyJYZ/octodance> (public; `main` tracks `ori
 - **Client-component barrels break Turbopack builds.** A Server Component importing a Client Component through a barrel `index.ts` that itself lacks `"use client"` fails with `Export X doesn't exist in target module` ("module has no exports at all"). Import the component file directly, or add `"use client"` to the barrel. Components here are flat files, so keep imports direct.
 - Biome needs **`css.parser.tailwindDirectives: true`** to parse `@theme`/`@import "tailwindcss"` in `globals.css`, otherwise `biome check` errors on the Tailwind syntax.
 
+- **The drawing persists in `localStorage`** (`src/lib/canvas/persist.ts`; keys `octodance:drawing:v1`, `octodance:palette:v1`). Strokes live in refs, so without this a reload wipes the user's work — and that includes Next's own full reload on HMR, which is exactly how a real drawing was lost. Saved on each commit/undo/clear and on `beforeunload`/`pagehide`, restored on mount; a cleared drawing **removes the key** rather than storing `[]`. On mount the in-memory strokes win when non-empty (a fast refresh can hold a newer drawing than storage) and are written back. Encoding is compact (flattened `[x,y,…]` points, coords rounded, kind tags `"i"`/`"e"`) and decode validates every field. Gotcha: a kind-tag mismatch between encode and decode rejects *every* stroke silently — it presents as "storage is fine but nothing ever restores".
+
 ## Components
 
 - Flat files under `src/ui/components/`, one component per file, **no per-component folder** (e.g. `src/ui/components/canvas.tsx`). Import as `@/ui/components/<name>`.

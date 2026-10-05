@@ -9,6 +9,12 @@ import {
 } from "react";
 import { HexColorPicker } from "react-colorful";
 import { SILENT, useAudio } from "@/lib/canvas/audio";
+import {
+	loadDrawing,
+	loadPalette,
+	saveDrawing,
+	savePalette,
+} from "@/lib/canvas/persist";
 import { renderScene } from "@/lib/canvas/render";
 import { createId, type Point, type Stroke } from "@/lib/canvas/strokes";
 
@@ -122,6 +128,33 @@ export function Canvas({ className = "" }: { className?: string }) {
 		return () => observer.disconnect();
 	}, [render]);
 
+	// Restore the saved drawing. On a fast refresh the in-memory strokes can be
+	// newer than storage, so keep them and write them back instead of clobbering.
+	useEffect(() => {
+		const stored = loadDrawing();
+		if (strokesRef.current.length > 0) {
+			saveDrawing(strokesRef.current);
+		} else if (stored.length > 0) {
+			strokesRef.current = stored;
+			historyRef.current = [];
+			render();
+			bump();
+		}
+		const storedPalette = loadPalette();
+		if (storedPalette) setPalette(storedPalette);
+	}, [render, bump]);
+
+	// Flush on the way out so a reload never drops the drawing.
+	useEffect(() => {
+		const flush = () => saveDrawing(strokesRef.current);
+		window.addEventListener("beforeunload", flush);
+		window.addEventListener("pagehide", flush);
+		return () => {
+			window.removeEventListener("beforeunload", flush);
+			window.removeEventListener("pagehide", flush);
+		};
+	}, []);
+
 	// Animation loop: only runs during playback. Everything lives in refs, so
 	// nothing triggers a React render per frame.
 	useEffect(() => {
@@ -145,6 +178,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 		historyRef.current.push(strokesRef.current);
 		if (historyRef.current.length > MAX_HISTORY) historyRef.current.shift();
 		strokesRef.current = [...strokesRef.current, stroke];
+		saveDrawing(strokesRef.current);
 		bump();
 	};
 
@@ -214,6 +248,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 		const previous = historyRef.current.pop();
 		if (!previous) return;
 		strokesRef.current = previous;
+		saveDrawing(strokesRef.current);
 		render();
 		bump();
 	}, [render, bump]);
@@ -223,16 +258,22 @@ export function Canvas({ className = "" }: { className?: string }) {
 		historyRef.current.push(strokesRef.current);
 		if (historyRef.current.length > MAX_HISTORY) historyRef.current.shift();
 		strokesRef.current = [];
+		saveDrawing(strokesRef.current);
 		render();
 		bump();
 	}, [render, bump]);
 
 	const addColor = () => {
-		setPalette((prev) => (prev.includes(color) ? prev : [...prev, color]));
+		if (palette.includes(color)) return;
+		const next = [...palette, color];
+		setPalette(next);
+		savePalette(next);
 	};
 
 	const removeColor = (target: string) => {
-		setPalette((prev) => prev.filter((entry) => entry !== target));
+		const next = palette.filter((entry) => entry !== target);
+		setPalette(next);
+		savePalette(next);
 	};
 
 	const onFile = (event: React.ChangeEvent<HTMLInputElement>) => {
