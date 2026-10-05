@@ -177,17 +177,22 @@ export function buildRig(
 		}
 	}
 
-	// Loose attachment: anything the joints do not connect still has to move with
-	// the drawing. Link components by nearest distance (single linkage, capped at
-	// LOOSE_EPS_PX), so a part that touches nothing but its own neighbour is
-	// still pulled onto the shape it was drawn on.
-	//
-	// Earlier rules attached each orphan to "the nearest stroke that already
-	// reaches a joint", treating any real joint as anchoring. That left a
-	// two-dot cluster floating: the dots touch *each other*, so the cluster
-	// counted as anchored and was never bridged. Measured on a real drawing, the
-	// second eye and a yellow dot reported parent=null while the shape swung.
-	const LOOSE_EPS_PX = 90;
+	// Loose attachment: a part drawn *inside* another shape has to move with it.
+	// Containment, not proximity — proximity glues the outer, unenclosed strokes
+	// onto the main figure too, and they should stay their own pieces. Checked
+	// per stroke against components, so a cluster whose only edge is internal
+	// (two dots that touch *each other*) still finds the shape it sits on.
+	// Strict containment, and the inner stroke has to sit *comfortably* inside
+	// the container's bounding box (not merely graze it), or a thin curve whose
+	// bbox happens to overlap a dot would claim it. Outer strokes that no shape
+	// encloses stay their own pieces.
+	const CONTAIN_MARGIN_PX = 12;
+	const boxArea = (b: {
+		minX: number;
+		minY: number;
+		maxX: number;
+		maxY: number;
+	}) => Math.max(0, b.maxX - b.minX) * Math.max(0, b.maxY - b.minY);
 	const attachLoose = (i: number, j: number, a: Point, b: Point) => {
 		adjacency[i].push({ to: j, pivot: a, loose: true });
 		adjacency[j].push({ to: i, pivot: b, loose: true });
@@ -213,52 +218,46 @@ export function buildRig(
 	};
 	for (const edge of edgeList) looseUnion(edge.a, edge.b);
 
-	const loosePairs: {
-		d: number;
-		i: number;
-		j: number;
-		pi: Point;
-		pj: Point;
-	}[] = [];
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			if (looseFind(i) === looseFind(j)) continue;
-			const a = boxes[i];
-			const b = boxes[j];
+	// Smallest first, so an inner part binds to its immediate container before
+	// that container binds outward.
+	const byArea = Array.from({ length: n }, (_, i) => i).sort(
+		(a, b) => boxArea(boxes[a]) - boxArea(boxes[b]),
+	);
+	for (const i of byArea) {
+		const inner = boxes[i];
+		let bestArea = Number.POSITIVE_INFINITY;
+		let target = -1;
+		for (let j = 0; j < n; j++) {
+			if (j === i || looseFind(i) === looseFind(j)) continue;
+			const outer = boxes[j];
 			if (
-				a.maxX + LOOSE_EPS_PX < b.minX ||
-				b.maxX + LOOSE_EPS_PX < a.minX
+				outer.minX + CONTAIN_MARGIN_PX > inner.minX ||
+				outer.maxX - CONTAIN_MARGIN_PX < inner.maxX ||
+				outer.minY + CONTAIN_MARGIN_PX > inner.minY ||
+				outer.maxY - CONTAIN_MARGIN_PX < inner.maxY
 			)
 				continue;
-			if (
-				a.maxY + LOOSE_EPS_PX < b.minY ||
-				b.maxY + LOOSE_EPS_PX < a.minY
-			)
-				continue;
-			let best = Number.POSITIVE_INFINITY;
-			let pi: Point | null = null;
-			let pj: Point | null = null;
-			for (const p of strokes[i].points) {
-				for (const q of strokes[j].points) {
-					const d = dx2(p, q);
-					if (d < best) {
-						best = d;
-						pi = p;
-						pj = q;
-					}
+			const size = boxArea(outer);
+			if (size <= boxArea(inner) || size >= bestArea) continue;
+			bestArea = size;
+			target = j;
+		}
+		if (target < 0) continue;
+		let best = Number.POSITIVE_INFINITY;
+		let pi: Point = strokes[i].points[0];
+		let pj: Point = strokes[target].points[0];
+		for (const p of strokes[i].points) {
+			for (const q of strokes[target].points) {
+				const d = dx2(p, q);
+				if (d < best) {
+					best = d;
+					pi = p;
+					pj = q;
 				}
 			}
-			if (pi && pj && best <= LOOSE_EPS_PX * LOOSE_EPS_PX) {
-				loosePairs.push({ d: best, i, j, pi, pj });
-			}
 		}
-	}
-	// Kruskal: nearest pair first, so each part joins the closest thing it can.
-	loosePairs.sort((a, b) => a.d - b.d);
-	for (const pair of loosePairs) {
-		if (looseFind(pair.i) === looseFind(pair.j)) continue;
-		attachLoose(pair.i, pair.j, pair.pi, pair.pj);
-		looseUnion(pair.i, pair.j);
+		attachLoose(i, target, pi, pj);
+		looseUnion(i, target);
 	}
 
 	// A pair touching at two or more places is rigid together.
