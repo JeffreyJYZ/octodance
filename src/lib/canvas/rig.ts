@@ -19,6 +19,7 @@ export type RigGroup = {
 	freq: number;
 	phase: number;
 	dir: number;
+	angle: number; // eased current angle (radians)
 	strokes: number[];
 };
 
@@ -283,17 +284,42 @@ export function buildRig(
 	): RigGroup => {
 		const members = memberLists[index];
 		const allErase = members.every((m) => strokes[m].kind === "erase");
+
+		// Deterministic, coherent parameters — no per-limb randomness, which is
+		// what made the drawing jitter on six unrelated clocks. The phase comes
+		// from the joint's position (a smooth wave across the figure), and the
+		// direction is whichever way moves this limb's far end **away from the
+		// figure centre**, so a beat splays every limb outward together.
+		let far: Point | null = null;
+		let farDistance = -1;
+		for (const m of members) {
+			for (const p of strokes[m].points) {
+				const distance = (p.x - pivot.x) ** 2 + (p.y - pivot.y) ** 2;
+				if (distance > farDistance) {
+					farDistance = distance;
+					far = p;
+				}
+			}
+		}
+		let dir = 1;
+		if (far) {
+			const vx = far.x - center.x;
+			const vy = far.y - center.y;
+			const px = far.x - pivot.x;
+			const py = far.y - pivot.y;
+			const cross = vx * -py + vy * px;
+			if (cross !== 0) dir = Math.sign(cross);
+		}
+		const seed = pivot.x * 2.6 + pivot.y * 1.9;
+
 		return {
 			parent: parentGroup,
 			pivot,
-			swing: !linked
-				? allErase
-					? 0
-					: 0.15 + Math.random() * 0.15
-				: 0.35 + Math.random() * 0.45,
-			freq: 2.2 + Math.random() * 3.0,
-			phase: Math.random() * Math.PI * 2,
-			dir: Math.random() < 0.5 ? -1 : 1,
+			swing: !linked ? (allErase ? 0 : 0.12) : 0.3,
+			freq: 2.4,
+			phase: seed * Math.PI,
+			dir,
+			angle: 0,
 			strokes: members,
 		};
 	};
@@ -347,7 +373,7 @@ export function buildRig(
 		groupOf,
 		order,
 		center,
-		swayPhase: Math.random() * Math.PI * 2,
+		swayPhase: 0.9,
 	};
 }
 
@@ -400,16 +426,24 @@ export function rigMatrices(
 		const px = group.pivot.x * width;
 		const py = group.pivot.y * height;
 
-		const drive =
-			bass * 0.3 * Math.sin(time * group.freq + group.phase) +
-			mid * 0.2 * Math.sin(time * group.freq * 0.8 + group.phase * 1.3) +
-			beat * 2.5;
+		const idle =
+			bass * 0.15 * Math.sin(time * group.freq + group.phase) +
+			mid * 0.1 * Math.sin(time * group.freq * 0.8 + group.phase * 1.3);
+		// The beat is the dominant term: one hit splays the limbs outward, then
+		// it settles. Idle motion stays small so the music reads as the driver.
+		const drive = idle + beat;
 		// Clamp so a kick cannot flip a limb right over.
-		const angle = Math.max(
-			-0.7,
-			Math.min(0.7, group.swing * group.dir * intensity * drive * ramp),
+		const target = Math.max(
+			-0.4,
+			Math.min(0.4, group.swing * group.dir * intensity * drive * ramp),
 		);
-		const local = mul(trans(px, py), mul(rot(angle), trans(-px, -py)));
+		// Ease toward the target instead of snapping to it. A beat used to
+		// teleport every limb ~25 deg between two frames, which read as jitter.
+		group.angle += (target - group.angle) * 0.35;
+		const local = mul(
+			trans(px, py),
+			mul(rot(group.angle), trans(-px, -py)),
+		);
 
 		out[index] =
 			group.parent === null
