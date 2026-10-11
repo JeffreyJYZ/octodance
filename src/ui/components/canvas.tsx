@@ -9,6 +9,7 @@ import {
 } from "react";
 import { HexColorPicker } from "react-colorful";
 import { SILENT, useAudio } from "@/lib/canvas/audio";
+import { DEFAULT_PALETTE } from "@/lib/canvas/palette";
 import {
 	loadDrawing,
 	loadPalette,
@@ -17,21 +18,6 @@ import {
 } from "@/lib/canvas/persist";
 import { renderScene } from "@/lib/canvas/render";
 import { createId, type Point, type Stroke } from "@/lib/canvas/strokes";
-
-const DEFAULT_PALETTE = [
-	"#000000",
-	"#ffffff",
-	"#ef4444",
-	"#f97316",
-	"#eab308",
-	"#22c55e",
-	"#06b6d4",
-	"#3b82f6",
-	"#6366f1",
-	"#8b5cf6",
-	"#ec4899",
-	"#64748b",
-];
 
 const MAX_HISTORY = 30;
 
@@ -298,18 +284,18 @@ export function Canvas({ className = "" }: { className?: string }) {
 	const toggleClass = (active: boolean) =>
 		`rounded-md border px-2 py-1 text-sm whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 ${
 			active
-				? "border-black/20 bg-neutral-900 text-white"
-				: "border-black/10 hover:bg-neutral-100 disabled:hover:bg-transparent"
+				? "border-edge bg-accent text-accent-ink"
+				: "border-edge hover:bg-hover disabled:hover:bg-transparent"
 		}`;
 
 	const actionClass =
-		"rounded-md border border-black/10 px-2 py-1 text-sm whitespace-nowrap hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+		"rounded-md border border-edge px-2 py-1 text-sm whitespace-nowrap hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
 
 	return (
 		<div
 			className={`grid gap-6 md:grid-cols-[minmax(0,1fr)_320px] ${className}`}
 		>
-			<div className="relative min-h-[420px] w-full overflow-hidden rounded-xl border border-black/10 bg-white">
+			<div className="relative min-h-[420px] w-full overflow-hidden rounded-xl border border-edge bg-paper">
 				<canvas
 					ref={canvasRef}
 					aria-label="Drawing canvas"
@@ -330,7 +316,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 
 			<div className="flex flex-col gap-4">
 				<div className="flex flex-col gap-2">
-					<span className="text-sm text-neutral-600">Music</span>
+					<span className="text-sm text-muted">Music</span>
 					<div className="grid grid-cols-3 gap-2">
 						{DEMO_TRACKS.map((track) => (
 							<button
@@ -349,7 +335,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 						))}
 					</div>
 					<div className="flex items-center gap-2">
-						<label className="flex-1 cursor-pointer truncate rounded-md border border-black/10 px-2 py-1 text-center text-sm hover:bg-neutral-100">
+						<label className="flex-1 cursor-pointer truncate rounded-md border border-edge px-2 py-1 text-center text-sm hover:bg-hover">
 							<input
 								type="file"
 								accept="audio/*"
@@ -372,17 +358,17 @@ export function Canvas({ className = "" }: { className?: string }) {
 						</button>
 					</div>
 					{audio.trackName && (
-						<span className="truncate text-xs text-neutral-500">
+						<span className="truncate text-xs text-muted">
 							{audio.trackName}
 						</span>
 					)}
 					{audio.error && (
-						<span className="text-xs text-red-500">
+						<span className="text-xs text-red-600 dark:text-red-400">
 							{audio.error}
 						</span>
 					)}
 					<label className="flex items-center gap-2 text-sm">
-						<span className="text-neutral-600">Intensity</span>
+						<span className="text-muted">Intensity</span>
 						<input
 							type="range"
 							min={0}
@@ -398,7 +384,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 				</div>
 
 				<div className="flex flex-col gap-2">
-					<span className="text-sm text-neutral-600">Color</span>
+					<span className="text-sm text-muted">Color</span>
 					<HexColorPicker
 						color={color}
 						onChange={setColor}
@@ -406,10 +392,10 @@ export function Canvas({ className = "" }: { className?: string }) {
 					/>
 					<div className="flex items-center gap-2">
 						<span
-							className="size-7 rounded-full border border-black/10"
+							className="size-7 rounded-full border border-edge"
 							style={{ backgroundColor: color }}
 						/>
-						<span className="font-mono text-sm text-neutral-600">
+						<span className="font-mono text-sm text-muted">
 							{color.toUpperCase()}
 						</span>
 						<button
@@ -424,7 +410,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 				</div>
 
 				<div className="flex flex-col gap-2">
-					<span className="text-sm text-neutral-600">Palette</span>
+					<span className="text-sm text-muted">Palette</span>
 					<div className="flex flex-wrap gap-2">
 						{palette.map((entry) => (
 							<div key={entry} className="relative">
@@ -433,7 +419,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 									aria-label={`Use ${entry}`}
 									aria-pressed={color === entry}
 									onClick={() => setColor(entry)}
-									className={`size-7 rounded-full border border-black/10 outline-offset-2 ${
+									className={`size-7 rounded-full border border-edge outline-offset-2 ${
 										color === entry
 											? "outline-2 outline-blue-500"
 											: ""
@@ -445,7 +431,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 										type="button"
 										aria-label={`Remove ${entry}`}
 										onClick={() => removeColor(entry)}
-										className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full border border-black/10 bg-white text-[10px] leading-none text-neutral-600 hover:bg-neutral-100"
+										className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full border border-edge bg-surface text-[10px] leading-none text-muted hover:bg-hover"
 									>
 										×
 									</button>
@@ -456,9 +442,9 @@ export function Canvas({ className = "" }: { className?: string }) {
 				</div>
 
 				<label className="flex flex-col gap-2">
-					<span className="text-sm text-neutral-600">
+					<span className="text-sm text-muted">
 						Thickness
-						<span className="ml-2 tabular-nums text-neutral-400">
+						<span className="ml-2 tabular-nums text-muted">
 							{thickness}
 						</span>
 					</span>
@@ -474,7 +460,7 @@ export function Canvas({ className = "" }: { className?: string }) {
 							className="min-w-0 flex-1"
 						/>
 						<div
-							className="grid size-16 shrink-0 place-items-center rounded-md border border-black/10 bg-white"
+							className="grid size-16 shrink-0 place-items-center rounded-md border border-edge bg-paper"
 							aria-hidden="true"
 						>
 							<span

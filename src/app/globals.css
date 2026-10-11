@@ -1,11 +1,44 @@
 @import "tailwindcss";
 
-@theme inline {
-	--font-sans: var(--font-satoshi), ui-sans-serif, system-ui, sans-serif;
-	--font-display: var(--font-code), ui-sans-serif, system-ui, sans-serif;
-}
-
+/* Theme tokens — both themes ship, flipped on prefers-color-scheme. The raw
+   values live in `:root` (so a media query can swap them) and `@theme inline`
+   maps them onto utilities: bg-page, bg-surface, text-muted, border-edge, ... */
 @layer base {
+	:root {
+		color-scheme: light;
+		--palette-page: #ffffff;
+		--palette-surface: #f5f5f5;
+		--palette-edge: rgb(0 0 0 / 0.12);
+		--palette-ink: #171717;
+		--palette-muted: #525252;
+		--palette-hover: #f5f5f5;
+		--palette-accent: #171717;
+		--palette-accent-ink: #ffffff;
+		/* The drawing surface is paper, not chrome: it stays light in BOTH
+		   themes, so ink drawn in one theme can never vanish in the other.
+		   Strokes persist with explicit colours and the default is black. */
+		--palette-paper: #fdfdfd;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root {
+			color-scheme: dark;
+			--palette-page: #0a0a0a;
+			--palette-surface: #171717;
+			--palette-edge: rgb(255 255 255 / 0.16);
+			--palette-ink: #f5f5f5;
+			--palette-muted: #a3a3a3;
+			--palette-hover: #262626;
+			--palette-accent: #f5f5f5;
+			--palette-accent-ink: #171717;
+		}
+	}
+
+	body {
+		background-color: var(--palette-page);
+		color: var(--palette-ink);
+	}
+
 	h1,
 	h2,
 	h3,
@@ -41,4 +74,19 @@
 	h6 {
 		font-size: 1rem;
 	}
+}
+
+@theme inline {
+	--font-sans: var(--font-satoshi), ui-sans-serif, system-ui, sans-serif;
+	--font-display: var(--font-code), ui-sans-serif, system-ui, sans-serif;
+
+	--color-page: var(--palette-page);
+	--color-surface: var(--palette-surface);
+	--color-edge: var(--palette-edge);
+	--color-ink: var(--palette-ink);
+	--color-muted: var(--palette-muted);
+	--color-hover: var(--palette-hover);
+	--color-accent: var(--palette-accent);
+	--color-accent-ink: var(--palette-accent-ink);
+	--color-paper: var(--palette-paper);
 }

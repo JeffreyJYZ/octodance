@@ -28,6 +28,16 @@ Published: <https://github.com/JeffreyJYZ/octodance> (public; `main` tracks `ori
 - Biome needs **`css.parser.tailwindDirectives: true`** to parse `@theme`/`@import "tailwindcss"` in `globals.css`; else `biome check` errors on Tailwind syntax.
 
 - **Drawing persists in `localStorage`** (`src/lib/canvas/persist.ts`; keys `octodance:drawing:v1`, `octodance:palette:v1`). Strokes live in refs, so reload wipes work (HMR reload too). Saved on each commit/undo/clear and `beforeunload`/`pagehide`, restored on mount; clearing **removes the key**, not stores `[]`. On mount in-memory strokes win when non-empty (an HMR reload can hold newer than storage) and get written back. Encoding compact (flattened `[x,y,…]`, rounded coords, kind tags `"i"`/`"e"`); decode validates every field. Gotcha: kind-tag mismatch between encode and decode rejects *every* stroke silently — storage looks fine but nothing restores.
+- `tsc --noEmit` leaves `tsconfig.tsbuildinfo` (gitignored build cache, not source).
+
+## Theme, icon & social card
+
+- **Both themes ship, dark-first.** Tokens in `globals.css`: raw `--palette-*` in `:root` + `@media (prefers-color-scheme: dark)`, mapped by `@theme inline` to utilities — `bg-page`, `bg-surface`, `text-muted`, `border-edge`, `bg-hover`, `bg-accent`/`text-accent-ink`, `bg-paper`. Theme a control **through a token**, never raw `neutral-*`/`black/10` — that is how a light-only control reappears. `color-scheme` is set per theme so native inputs/scrollbars follow.
+- **The canvas paper is fixed light in BOTH themes** (`--palette-paper`) — deliberate, **do not "fix" it to follow the theme**. Strokes persist with explicit hex colours and default to `#000000`, so a themed paper makes a saved drawing invisible the moment the OS theme flips. Paper is a medium, not chrome. The thickness preview box is `bg-paper` for the same reason; erase is `destination-out`, so erased holes show the paper too.
+- `src/app/icon.svg` — theme-adaptive favicon: inverts `--badge`/`--mark` under `prefers-color-scheme`, so the badge contrasts with the tab strip in either scheme.
+- `src/app/opengraph-image.tsx` — `next/og` `ImageResponse`, static route, 1200×630 (verify with `curl` + `sips`). **satori cannot read woff2**, so it is handed `CODE-Bold.otf`/`CODE-Light.otf` (OTF is fine) and must never be handed `Satoshi-Variable.woff2`; font `data` takes `Buffer`/`ArrayBuffer`, a `Uint8Array` fails the type check.
+- `DEFAULT_PALETTE` lives in `src/lib/canvas/palette.ts`, shared by `canvas.tsx` and the OG card — two copies would drift.
+- `metadataBase` comes from `VERCEL_PROJECT_PRODUCTION_URL` (localhost fallback), so social-card URLs are absolute with no hardcoded domain.
 
 ## Components
 
