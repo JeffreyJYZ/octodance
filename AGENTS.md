@@ -1,6 +1,6 @@
 # octodance
 
-Published: <https://github.com/JeffreyJYZ/octodance> (public; `main` tracks `origin/main`).
+Published: <https://github.com/JeffreyJYZ/octodance> (public; `main` tracks `origin/main`). Live: <https://octodance.jyz.land> (Vercel).
 
 ## Stack
 
@@ -37,7 +37,7 @@ Published: <https://github.com/JeffreyJYZ/octodance> (public; `main` tracks `ori
 - `src/app/icon.svg` — theme-adaptive favicon: inverts `--badge`/`--mark` under `prefers-color-scheme`, so the badge contrasts with the tab strip in either scheme.
 - `src/app/opengraph-image.tsx` — `next/og` `ImageResponse`, static route, 1200×630 (verify with `curl` + `sips`). **satori cannot read woff2**, so it is handed `CODE-Bold.otf`/`CODE-Light.otf` (OTF is fine) and must never be handed `Satoshi-Variable.woff2`; font `data` takes `Buffer`/`ArrayBuffer`, a `Uint8Array` fails the type check.
 - `DEFAULT_PALETTE` lives in `src/lib/canvas/palette.ts`, shared by `canvas.tsx` and the OG card — two copies would drift.
-- `metadataBase` comes from `VERCEL_PROJECT_PRODUCTION_URL` (localhost fallback), so social-card URLs are absolute with no hardcoded domain.
+- `metadataBase` = the canonical `SITE_URL` constant in `layout.tsx`, **not** `VERCEL_PROJECT_PRODUCTION_URL` — that env var resolved to the `*.vercel.app` host on this project, so social cards advertised the non-canonical domain (`og:image` verified over `curl`). Social URLs must be absolute, so the production origin is correct even from a preview deploy.
 
 ## Components
 

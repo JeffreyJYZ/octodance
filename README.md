@@ -2,6 +2,8 @@
 
 Draw a creature, drop in a track, and watch it dance. Every stroke you draw becomes a limb: strokes that meet rotate about the joint where they touch, parts enclosed by a bigger shape ride along with it, and an audio-reactive rig bends the whole figure to the bass, mids, highs and beat of the music.
 
+Live at **<https://octodance.jyz.land>**.
+
 ## Features
 
 - Freehand drawing on a plain canvas — colour picker, removable palette swatches, thickness, eraser, 30-step undo, clear.

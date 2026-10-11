@@ -6,14 +6,13 @@ import "./globals.css";
 const DESCRIPTION =
 	"Draw a creature, drop in a track, and watch every stroke dance to the beat.";
 
+// The canonical production origin, used to make social-card URLs absolute.
+// Deliberately NOT read from VERCEL_PROJECT_PRODUCTION_URL: on this project
+// that resolved to the *.vercel.app host, so cards advertised the wrong domain.
+const SITE_URL = "https://octodance.jyz.land";
+
 export const metadata: Metadata = {
-	// Vercel exposes the production host, so social-card URLs resolve without a
-	// hardcoded domain. Local dev falls back to localhost.
-	metadataBase: new URL(
-		process.env.VERCEL_PROJECT_PRODUCTION_URL
-			? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-			: "http://localhost:3000",
-	),
+	metadataBase: new URL(SITE_URL),
 	title: "octodance",
 	description: DESCRIPTION,
 	openGraph: {
