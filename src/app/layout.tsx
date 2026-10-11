@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { codeFont, satoshiFont } from "@/ui/fonts";
@@ -29,7 +30,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 			lang="en"
 			className={`${satoshiFont.variable} ${codeFont.variable}`}
 		>
-			<body>{children}</body>
+			<body>
+				{children}
+				<Analytics />
+			</body>
 		</html>
 	);
 }
